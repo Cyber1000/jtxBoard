@@ -1,0 +1,93 @@
+name: Fork - Create release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "!v*alpha*"
+      - "!v*beta*"
+      - "!v*-fork"
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g., v2.14.1)"
+        required: true
+        type: string
+
+jobs:
+  build-fork-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TAG_NAME="${{ inputs.tag }}"
+          else
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "fork_tag=${TAG_NAME}-fork" >> $GITHUB_OUTPUT
+
+      - name: Checkout develop-fork at tag
+        uses: actions/checkout@v5
+        with:
+          ref: develop-fork
+          fetch-depth: 0
+          submodules: true
+
+      - name: Merge or rebase to specified tag
+        run: |
+          git fetch origin --tags
+
+          if ! git rev-parse "${{ steps.tag.outputs.tag_name }}" >/dev/null 2>&1; then
+            echo "Error: Tag ${{ steps.tag.outputs.tag_name }} does not exist!"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git merge ${{ steps.tag.outputs.tag_name }} --no-edit
+
+      - name: Create or update fork tag
+        run: |
+          git tag -f ${{ steps.tag.outputs.fork_tag }}
+          git push origin ${{ steps.tag.outputs.fork_tag }} --force
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Build OSE Release APK
+        run: ./gradlew app:assembleOseDebug
+        env:
+          CROWDIN_API_KEY: ${{ secrets.CROWDIN_API_KEY }}
+          GOOGLE_GEO_API_KEY: ${{ secrets.GOOGLE_GEO_API_KEY }}
+          GH_CONTRIBUTORS_API_KEY: ${{ secrets.GH_CONTRIBUTORS_API_KEY }}
+
+      - name: Copy OSE APK
+        run: cp app/build/outputs/apk/ose/debug/app-ose-debug.apk jtxBoard-${{ steps.tag.outputs.fork_tag }}.apk
+
+      - name: Create or update Github Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.fork_tag }}
+          name: "jtxBoard ${{ steps.tag.outputs.fork_tag }}"
+          body: |
+            Fork build based on upstream ${{ steps.tag.outputs.tag_name }}
+
+            Custom fork with modifications.
+
+            Build triggered: ${{ github.event_name == 'workflow_dispatch' && 'Manual' || 'Automatic (new tag)' }}
+          prerelease: ${{ contains(steps.tag.outputs.tag_name, '-alpha') || contains(steps.tag.outputs.tag_name, '-beta') || contains(steps.tag.outputs.tag_name, '-rc') }}
+          files: jtxBoard-${{ steps.tag.outputs.fork_tag }}.apk
+          generate_release_notes: false
+          fail_on_unmatched_files: true
