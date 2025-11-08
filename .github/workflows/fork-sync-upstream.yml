@@ -1,0 +1,62 @@
+name: Fork - Sync upstream
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout develop-fork
+        uses: actions/checkout@v5
+        with:
+          ref: develop-fork
+          fetch-depth: 0
+          token: ${{ secrets.WORKFLOW_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/techbeeAT/jtxBoard.git || true
+          git fetch upstream --tags
+
+      - name: Sync develop branch (clean)
+        run: |
+          git checkout develop || git checkout -b develop upstream/develop
+          git reset --hard upstream/develop
+          git push origin develop --force
+
+      - name: Disable original workflows in develop
+        run: |
+          git checkout develop
+
+          # rename workflows, not starting with "fork-"
+          cd .github/workflows
+          for file in *.yml *.yaml; do
+            [ -e "$file" ] || continue
+            
+            # rename only workflows, not starting with "fork-"
+            if [[ ! "$file" =~ ^fork- ]] && [[ ! "$file" =~ \.disabled$ ]]; then
+              git mv "$file" "${file}.disabled" 2>/dev/null || true
+            fi
+          done
+
+          git add .
+          git commit -m "Disable non-fork workflows after upstream sync" || true
+          git push origin develop
+
+      - name: Rebase develop-fork on develop
+        run: |
+          git checkout develop-fork
+          git rebase develop
+          git push origin develop-fork --force-with-lease
+
+      - name: Sync all tags
+        run: |
+          git push origin --tags --force
