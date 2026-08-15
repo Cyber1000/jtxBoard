@@ -1002,20 +1002,20 @@ data class ICalObject(
             Frequency.SECONDLY -> start.minusHours(1)
             Frequency.MINUTELY -> start.minusDays(1)
             Frequency.HOURLY   -> start.minusDays(30)
-            Frequency.DAILY,
-            Frequency.WEEKLY   -> start.minusYears(1)
-            Frequency.MONTHLY  -> start.minusYears(10)
-            Frequency.YEARLY   -> start.minusYears(100)
+            Frequency.DAILY    -> start.minusDays(14)
+            Frequency.WEEKLY   -> start.minusDays(30)
+            Frequency.MONTHLY  -> start.minusYears(1)
+            Frequency.YEARLY   -> start.minusYears(2)
         }
 
         val to = when (frequency) {
             Frequency.SECONDLY -> start.plusHours(1)
             Frequency.MINUTELY -> start.plusDays(1)
             Frequency.HOURLY   -> start.plusDays(30)
-            Frequency.DAILY,
-            Frequency.WEEKLY   -> start.plusYears(1)
-            Frequency.MONTHLY  -> start.plusYears(10)
-            Frequency.YEARLY   -> start.plusYears(100)
+            Frequency.DAILY    -> start.plusDays(14)
+            Frequency.WEEKLY   -> start.plusDays(30)
+            Frequency.MONTHLY  -> start.plusYears(1)
+            Frequency.YEARLY   -> start.plusYears(2)
         }
 
         return Period(from, to)
