@@ -52,10 +52,32 @@ jobs:
           git push origin develop
 
       - name: Rebase develop-fork on develop
+        id: rebase
         run: |
           git checkout develop-fork
-          git rebase develop
+          # Ein Rebase, der auf eine Hand wartet, ist in einem naechtlichen Job ein
+          # Dauerfehler: er laesst den Baum halb fertig stehen und der naechste Lauf
+          # scheitert an denselben Konflikten. Also sauber abbrechen und melden.
+          if ! git rebase develop; then
+            git rebase --abort || true
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
           git push origin develop-fork --force-with-lease
+
+      - name: Report conflict as an issue
+        if: failure() && steps.rebase.outputs.conflict == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+        run: |
+          # Ein roter Cron-Lauf faellt niemandem auf, ein Issue schon - genau daran
+          # ist dieser Sync monatelang unbemerkt gescheitert.
+          title="Fork sync: rebase of develop-fork onto upstream failed"
+          if [ -z "$(gh issue list --state open --search "$title" --json number --jq '.[0].number')" ]; then
+            body="The nightly sync could not rebase develop-fork onto develop. The rebase was aborted, so the branch is untouched. Resolve the conflict locally and push, then the next run continues on its own."
+            body="$body Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            gh issue create --title "$title" --body "$body"
+          fi
 
       - name: Sync all tags
         run: |
