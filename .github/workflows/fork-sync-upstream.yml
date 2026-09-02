@@ -26,30 +26,24 @@ jobs:
           git remote add upstream https://github.com/techbeeAT/jtxBoard.git || true
           git fetch upstream --tags
 
-      - name: Sync develop branch (clean)
+      - name: Sync develop branch and disable the original workflows
         run: |
           git checkout develop || git checkout -b develop upstream/develop
           git reset --hard upstream/develop
-          git push origin develop --force
 
-      - name: Disable original workflows in develop
-        run: |
-          git checkout develop
-
-          # rename workflows, not starting with "fork-"
-          cd .github/workflows
-          for file in *.yml *.yaml; do
+          # The renaming has to happen before develop is pushed. A push whose head commit still
+          # carries upstream's enabled workflow files makes GitHub run them once, and a second
+          # push that disables them arrives too late - that is one Unit tests and one Build Test
+          # APK run per night, on every upstream commit.
+          for file in .github/workflows/*.yml .github/workflows/*.yaml; do
             [ -e "$file" ] || continue
-            
-            # rename only workflows, not starting with "fork-"
-            if [[ ! "$file" =~ ^fork- ]] && [[ ! "$file" =~ \.disabled$ ]]; then
+            if [[ ! "$(basename "$file")" =~ ^fork- ]]; then
               git mv "$file" "${file}.disabled" 2>/dev/null || true
             fi
           done
 
-          git add .
           git commit -m "Disable non-fork workflows after upstream sync" || true
-          git push origin develop
+          git push origin develop --force
 
       - name: Rebase develop-fork on develop
         id: rebase
