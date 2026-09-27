@@ -32,24 +32,38 @@ jobs:
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "fork_tag=${TAG_NAME}-fork" >> $GITHUB_OUTPUT
 
-      - name: Checkout develop-fork at tag
+      - name: Check out the fork
         uses: actions/checkout@v5
         with:
           ref: develop-fork
           fetch-depth: 0
 
-      - name: Merge or rebase to specified tag
+      - name: Put the fork commits on top of the upstream tag
         run: |
-          git fetch origin --tags
+          git fetch origin --tags --force
+          git fetch origin +refs/heads/develop:refs/remotes/origin/develop
 
-          if ! git rev-parse "${{ steps.tag.outputs.tag_name }}" >/dev/null 2>&1; then
-            echo "Error: Tag ${{ steps.tag.outputs.tag_name }} does not exist!"
+          if ! git rev-parse -q --verify "${{ steps.tag.outputs.tag_name }}^{commit}" >/dev/null; then
+            echo "Tag ${{ steps.tag.outputs.tag_name }} does not exist here."
+            echo "Upstream tags arrive through the nightly sync - it may not have run yet."
             exit 1
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git merge ${{ steps.tag.outputs.tag_name }} --no-edit
+
+          # Merging the tag into develop-fork would be a no-op: the nightly sync rebases
+          # develop-fork onto develop, so every released tag is already an ancestor, and the
+          # build would be current develop under a release name. Replay the fork's own commits
+          # onto the tag instead.
+          base=$(git merge-base origin/develop HEAD)
+          if ! git rebase --onto "${{ steps.tag.outputs.tag_name }}" "$base" develop-fork; then
+            git rebase --abort || true
+            echo "The fork commits do not apply onto ${{ steps.tag.outputs.tag_name }}."
+            exit 1
+          fi
+
+          echo "Built from ${{ steps.tag.outputs.tag_name }} plus $(git rev-list --count "${{ steps.tag.outputs.tag_name }}"..HEAD) fork commits."
 
       - name: Create or update fork tag
         run: |
