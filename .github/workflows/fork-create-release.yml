@@ -37,6 +37,9 @@ jobs:
         with:
           ref: develop-fork
           fetch-depth: 0
+          # The fork tag carries upstream's workflow files, which GITHUB_TOKEN may never
+          # create or update - no permissions: setting lifts that. The push needs the PAT.
+          token: ${{ secrets.WORKFLOW_TOKEN }}
 
       - name: Put the fork commits on top of the upstream tag
         run: |
